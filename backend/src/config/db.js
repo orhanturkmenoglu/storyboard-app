@@ -12,7 +12,7 @@ dotenv.config({ path: path.resolve(__dirname, ".env") });
 
 const MONGODB_URI = process.env.MONGODB_URI;
 
-const connectDB = async () => {
+const connectDB = async () => { 
   try {
     const { connection } = await mongoose.connect(MONGODB_URI);
     console.log(
