@@ -1,4 +1,4 @@
-import express from "express";
+import app from "./app.js";
 import "colors";
 import path from "path";
 import dotenv from "dotenv";
@@ -9,8 +9,6 @@ dotenv.config({ path: path.resolve("./config/.env") });
 
 console.log("Mongo URI test:", process.env.MONGODB_URI); 
 
-// express
-const app = express();
 const PORT = process.env.PORT || 3000;
 
 // MongoDB connect
