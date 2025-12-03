@@ -1,14 +1,14 @@
 import mongoose from "mongoose";
 import colors from "colors";
 import dotenv from "dotenv";
-import path from "path";
+import path  from "path";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// dotenv yükle (src/config/.env)
-dotenv.config({ path: path.join(__dirname, ".env") });
+// dotenv yükle (server.js ile aynı klasördeki .env)
+dotenv.config({ path: path.resolve(__dirname, ".env") });
 
 const MONGODB_URI = process.env.MONGODB_URI;
 

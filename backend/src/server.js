@@ -2,14 +2,10 @@ import express from "express";
 import "colors";
 import path from "path";
 import dotenv from "dotenv";
-import { fileURLToPath } from "url";
 import connectDB from "./config/db.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 // dotenv yükle (src/config/.env)
-dotenv.config({ path: path.join(__dirname, ".env") });
+dotenv.config({ path: path.resolve("./config/.env") });
 
 console.log("Mongo URI test:", process.env.MONGODB_URI); 
 
