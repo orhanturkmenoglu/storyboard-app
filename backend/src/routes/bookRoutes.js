@@ -2,6 +2,7 @@ import express from "express";
 import cloudinary from "../config/cloudinary.js";
 import Book from "../models/Book.js";
 import protectRoute from "../middleware/auth.middleware.js";
+import Favorite from "../models/Favorite.js";
 
 const router = express.Router();
 
@@ -171,4 +172,189 @@ router.delete("/:id", protectRoute, async (req, res) => {
   }
 });
 
+/* ------------------------------------------------------
+ 🚀 ADD BOOK TO FAVORITES
+-------------------------------------------------------*/
+router.post("/favorites", protectRoute, async (req, res) => {
+  try {
+    const { bookId } = req.body;
+
+    console.log("📥 Favorite add request:", { userId: req.user._id, bookId });
+
+    // -------------------- VALIDATION --------------------
+    if (!bookId) {
+      return res.status(400).json({ success: false, message: "Kitap ID boş bırakılamaz!" });
+    }
+
+    // -------------------- DB CHECK --------------------
+    const book = await Book.findById(bookId);
+    if (!book) {
+      return res.status(404).json({ success: false, message: "Kitap bulunamadı" });
+    }
+
+    // -------------------- EXISTING FAVORITE CHECK --------------------
+    const existFavorite = await Favorite.findOne({ user: req.user._id, book: bookId });
+    if (existFavorite) {
+      return res.status(409).json({ success: false, message: "Favorilerde zaten kayıtlı" });
+    }
+   
+    // -------------------- BUSINESS LOGIC --------------------
+    const newFavorite = new Favorite({
+      user: req.user._id,
+      book: book._id,
+      createdAt: new Date(),
+    });
+
+    await newFavorite.save();
+
+    console.log("✅ Favorite added:", newFavorite._id);
+
+    // -------------------- OUTPUT --------------------
+    return res.status(201).json({
+      success: true,
+      message: "Kitap favorilere eklendi",
+      favorite: newFavorite,
+    });
+  } catch (error) {
+    console.error("❌ Favorite add error:", error);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+
+/* ------------------------------------------------------
+ 🚀 REMOVE BOOK FROM FAVORITES
+-------------------------------------------------------*/
+router.delete("/favorites/:bookId", protectRoute, async (req, res) => {
+  try {
+    const { bookId } = req.params;
+
+    console.log("📥 Favorite remove request:", { userId: req.user._id, bookId });
+
+    const favorite = await Favorite.findOne({ user: req.user._id, book: bookId });
+
+    if (!favorite) {
+      return res.status(404).json({ success: false, message: "Favorilerde kayıtlı değil" });
+    }
+
+    await favorite.deleteOne();
+
+    console.log("✅ Favorite removed:", favorite._id);
+
+    return res.status(200).json({ success: true, message: "Favoriden çıkarıldı" });
+  } catch (error) {
+    console.error("❌ Favorite remove error:", error);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+/* ------------------------------------------------------
+ 📖 GET USER FAVORITES
+-------------------------------------------------------*/
+router.get("/favorites", protectRoute, async (req, res) => {
+  try {
+    const favorites = await Favorite.find({ user: req.user._id }).populate("book");
+
+    return res.status(200).json({
+      success: true,
+      favorites,
+    });
+  } catch (error) {
+    console.error("❌ Fetch favorites error:", error);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+
 export default router;
+
+
+// bir kullanıcı kitapları favorilerine eklemek istiyor 
+/* 
+    kullanıcı favorilere sadece kendi kitaplarını veya başkalarının kitaplarını ekleyebilir
+    aynı kitabi birden fazla kez ekleyemez
+    favoriler listesi kullanıcıya göre sıralanabilir ve sayfalama destekler
+*/
+
+/* 
+   input : user ıd ve kitap id jwtden gelir
+   validation : kitap id boş dolu kontrolü
+   db check : favorilerde zaten var mı yok mu
+  auth permisson : kullanıcı girişli mi Kitap ekleme yetkisi kontrol edilir:
+    business logic : favorilere ekleme 
+    ✅ Favorilere Kitap Ekleme / Çıkarma – Profesyonel Akış
+1️⃣ INPUT
+userId          // req.user._id (JWT’den gelir)
+bookId          // req.body.bookId
+
+2️⃣ VALIDATION
+
+Boş mu dolu mu?
+
+if (!bookId) return res.status(400).json({ message: "bookId zorunludur" });
+
+
+Favorilerde zaten var mı?
+
+const exists = await Favorite.findOne({ user: userId, book: bookId });
+if (exists) return res.status(409).json({ message: "Kitap zaten favorilerde" });
+
+3️⃣ DB CHECK
+
+Kitap gerçekten var mı?
+
+const book = await Book.findById(bookId);
+if (!book) return res.status(404).json({ message: "Kitap bulunamadı" });
+
+
+Kitap aktif mi? Soft delete vs. kontrol edilir.
+
+4️⃣ AUTH / PERMISSION
+
+Kullanıcı girişli mi? (protectRoute middleware)
+
+Kitap ekleme yetkisi kontrol edilir:
+
+Kullanıcı kendi kitabını veya başkasının kitabını favorilere ekleyebilir.
+
+Eğer yetki yoksa → 403 Forbidden.
+
+5️⃣ BUSINESS LOGIC
+
+Favorilere ekleme:
+
+const favorite = new Favorite({ user: userId, book: bookId });
+await favorite.save();
+
+
+Listelenebilirlik / sıralama:
+
+Eklenme tarihi kaydedilir.
+
+Son eklenen en üstte görünebilir.
+
+Eğer çıkarma gerekiyorsa:
+
+await Favorite.deleteOne({ user: userId, book: bookId });
+
+6️⃣ OUTPUT
+Başarılı ekleme:
+{
+  "success": true,
+  "message": "Kitap favorilere eklendi",
+  "favorite": {
+    "id": "abc123",
+    "bookId": "def456",
+    "userId": "user789",
+    "createdAt": "2025-12-04T01:00:00.000Z"
+  }
+}
+
+Başarısız durumlar:
+
+Kitap yok → 404
+
+Favorilerde zaten var → 409
+
+Yetki yok → 403
+*/
