@@ -12,7 +12,11 @@ const bookSchema = new mongoose.Schema(
     },
     image: {
       type: String,
-      required: true,
+      required:true
+    },
+    cloudinaryId:{
+      type:String,
+      default:""
     },
     rating: {
       type: Number,
