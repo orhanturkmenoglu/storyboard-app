@@ -4,7 +4,7 @@ import Book from "../models/Book";
 
 const router = express();
 
-router.post("/", async (req, res) => {
+router.post("/",protectRoute, async (req, res) => {
   try {
     const { title, caption, rating, image } = req.body;
 
@@ -32,7 +32,7 @@ router.post("/", async (req, res) => {
       caption,
       rating,
       image: imageUrl,
-      user: req.userId,
+      user: req.user._id,
     });
 
     await newBook.save();
