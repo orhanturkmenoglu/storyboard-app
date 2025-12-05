@@ -3,6 +3,7 @@ import cloudinary from "../config/cloudinary.js";
 import Book from "../models/Book.js";
 import protectRoute from "../middleware/auth.middleware.js";
 import Favorite from "../models/Favorite.js";
+import redisClient from "../config/redis.client.js";
 
 const router = express.Router();
 
@@ -37,7 +38,7 @@ router.post("/", protectRoute, async (req, res) => {
       caption,
       rating,
       image: uploadResponse.secure_url,
-      cloudinaryId:uploadResponse.public_id,
+      cloudinaryId: uploadResponse.public_id,
       user: req.user._id,
     });
 
@@ -68,7 +69,17 @@ router.get("/", protectRoute, async (req, res) => {
     let limit = Number(req.query.limit) || 5;
     let skip = (page - 1) * limit;
 
+    const userId = req.user._id.toString();
+    const cacheKey = `books:${userId}:page:${page}:limit:${limit}`;
+
     console.log(`📄 Fetch books: page=${page}, limit=${limit}`);
+
+    const cached = await redisClient(cacheKey);
+
+    if (cached) {
+      console.log("⚡ Cache'den getirildi.");
+      return res.status(200).json(JSON.parse(cached));
+    }
 
     const books = await Book.find({ user: req.user._id })
       .sort({ createdAt: -1 })
@@ -76,15 +87,19 @@ router.get("/", protectRoute, async (req, res) => {
       .limit(limit)
       .populate("user", "username profileImage");
 
-    const totalBooks = await Book.countDocuments();
+    const totalBooks = await Book.countDocuments({ user: req.user._id });
 
-    return res.status(200).json({
+    const responseData = {
       success: true,
       books,
       currentPage: page,
       totalBooks,
       totalPages: Math.ceil(totalBooks / limit),
-    });
+    };
+
+    await redisClient.setEx(cacheKey, 3600, JSON.stringify(responseData));
+
+    return res.status(200).json({ responseData });
   } catch (error) {
     console.error("❌ Book fetch error:", error);
     return res.status(500).json({
@@ -99,10 +114,28 @@ router.get("/", protectRoute, async (req, res) => {
 -------------------------------------------------------*/
 router.get("/user", protectRoute, async (req, res) => {
   try {
+    const userId = req.user._id.toString();
+    const cacheKey = `books:user:${userId}`;
+
+    const cached = await redisClient.get(cacheKey);
+
+    if (cached) {
+      console.log("⚡ Kullanıcı kitapları cache'den getirildi");
+      return res.status(200).json({
+        success: true,
+        books: JSON.parse(cached),
+        cached: true,
+      });
+    }
+
     const books = await Book.find({ user: req.user._id });
+
+    await redisClient.setEx(cacheKey, 3600, JSON.stringify(books));
+
     return res.status(200).json({
       success: true,
       books,
+      cached: false,
     });
   } catch (error) {
     console.error("❌ User books fetch error:", error);
@@ -119,6 +152,7 @@ router.get("/user", protectRoute, async (req, res) => {
 router.delete("/:id", protectRoute, async (req, res) => {
   try {
     const bookId = req.params.id;
+    const userId = req.user._id.toString();
     console.log("🗑 Delete request for:", bookId);
 
     const book = await Book.findById(bookId);
@@ -159,6 +193,9 @@ router.delete("/:id", protectRoute, async (req, res) => {
     await book.deleteOne();
     console.log("📚 Book deleted from DB");
 
+    const keys = await redisClient.keys(`books:${userId}*`);
+    if (keys.length) await redisClient.del(keys);
+
     return res.status(200).json({
       success: true,
       message: "Book deleted successfully",
@@ -183,21 +220,30 @@ router.post("/favorites", protectRoute, async (req, res) => {
 
     // -------------------- VALIDATION --------------------
     if (!bookId) {
-      return res.status(400).json({ success: false, message: "Kitap ID boş bırakılamaz!" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Kitap ID boş bırakılamaz!" });
     }
 
     // -------------------- DB CHECK --------------------
     const book = await Book.findById(bookId);
     if (!book) {
-      return res.status(404).json({ success: false, message: "Kitap bulunamadı" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Kitap bulunamadı" });
     }
 
     // -------------------- EXISTING FAVORITE CHECK --------------------
-    const existFavorite = await Favorite.findOne({ user: req.user._id, book: bookId });
+    const existFavorite = await Favorite.findOne({
+      user: req.user._id,
+      book: bookId,
+    });
     if (existFavorite) {
-      return res.status(409).json({ success: false, message: "Favorilerde zaten kayıtlı" });
+      return res
+        .status(409)
+        .json({ success: false, message: "Favorilerde zaten kayıtlı" });
     }
-   
+
     // -------------------- BUSINESS LOGIC --------------------
     const newFavorite = new Favorite({
       user: req.user._id,
@@ -217,10 +263,11 @@ router.post("/favorites", protectRoute, async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Favorite add error:", error);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 });
-
 
 /* ------------------------------------------------------
  🚀 REMOVE BOOK FROM FAVORITES
@@ -229,22 +276,36 @@ router.delete("/favorites/:bookId", protectRoute, async (req, res) => {
   try {
     const { bookId } = req.params;
 
-    console.log("📥 Favorite remove request:", { userId: req.user._id, bookId });
+    console.log("📥 Favorite remove request:", {
+      userId: req.user._id,
+      bookId,
+    });
 
-    const favorite = await Favorite.findOne({ user: req.user._id, book: bookId });
+    const favorite = await Favorite.findOne({
+      user: req.user._id,
+      book: bookId,
+    });
 
     if (!favorite) {
-      return res.status(404).json({ success: false, message: "Favorilerde kayıtlı değil" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Favorilerde kayıtlı değil" });
     }
 
     await favorite.deleteOne();
 
     console.log("✅ Favorite removed:", favorite._id);
 
-    return res.status(200).json({ success: true, message: "Favoriden çıkarıldı" });
+    await redisClient.del(`books:favorite:${req.user._id}`);
+
+    return res
+      .status(200)
+      .json({ success: true, message: "Favoriden çıkarıldı" });
   } catch (error) {
     console.error("❌ Favorite remove error:", error);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 });
 
@@ -253,17 +314,34 @@ router.delete("/favorites/:bookId", protectRoute, async (req, res) => {
 -------------------------------------------------------*/
 router.get("/favorites", protectRoute, async (req, res) => {
   try {
-    const favorites = await Favorite.find({ user: req.user._id }).populate("book");
+    const userId = req.user._id;
+    const cacheKey = `books:favorite:${userId}`;
+
+    const cached = await redisClient.get(cacheKey);
+    if (cached) {
+      return res.status(200).json({
+        success: true,
+        cached,
+        cached: true,
+      });
+    }
+    const favorites = await Favorite.find({ user: req.user._id }).populate(
+      "book"
+    );
+
+    await redisClient.setEx(cacheKey, 3600, JSON.stringify(favorites));
 
     return res.status(200).json({
       success: true,
       favorites,
+      cached: false,
     });
   } catch (error) {
     console.error("❌ Fetch favorites error:", error);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 });
-
 
 export default router;
