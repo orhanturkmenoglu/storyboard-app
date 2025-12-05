@@ -1,3 +1,4 @@
+import { Link } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
 
 export default function Index() {
@@ -12,6 +13,9 @@ export default function Index() {
     >
       <Text style={{ color: "red" }}>Hello merhaba </Text>
       <Text style={styles.title}>Renk Blue</Text>
+
+      <Link href="/(auth)/signup">Signup</Link>
+      <Link href="/(auth)/login">Login</Link>
     </View>
   );
 }

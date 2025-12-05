@@ -1,10 +1,22 @@
 import { Stack } from "expo-router";
-
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import SafeScreen from './components/SafeScreen';
+import { StatusBar } from "expo-status-bar";
 /* layout : düzen dosyasıdır. */
 /* Stack : navigator düzenlememizi sağlar 
+ <Stack.Screen name="index"/>
+   <Stack.Screen name="(auth)"/> ekranlarımızı koyduk
  */
 export default function RootLayout() {
-  return <Stack screenOptions={{title:"Home"}}>
-   <Stack.Screen name="index" options={{title:"Home"}}/>
-  </Stack>
+  return (
+    <SafeAreaProvider>
+      <SafeScreen>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="(auth)" />
+        </Stack>
+      </SafeScreen>
+      <StatusBar style="dark" />
+    </SafeAreaProvider>
+  );
 }
