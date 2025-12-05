@@ -11,9 +11,6 @@ export default function Index() {
       }} */
       style={styles.container}
     >
-      <Text style={{ color: "red" }}>Hello merhaba </Text>
-      <Text style={styles.title}>Renk Blue</Text>
-
       <Link href="/(auth)/signup">Signup</Link>
       <Link href="/(auth)/login">Login</Link>
     </View>
